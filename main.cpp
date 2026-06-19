@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <cmath>
 #include "ray.h"
 
 // 두 벡터의 내적(Dot Product) 연산 함수
@@ -7,27 +8,38 @@ inline double dot(const vec3& u, const vec3& v) {
     return u.e[0]*v.e[0] + u.e[1]*v.e[1] + u.e[2]*v.e[2];
 }
 
-// 광선이 구체와 부딪히는지 판별하는 함수 (2차 방정식 판별식)
-bool hit_sphere(const vec3& center, double radius, const ray& r) {
-    vec3 oc = r.origin() - center;               // (A - C)
-    double a = dot(r.direction(), r.direction()); // B · B
-    double b = 2.0 * dot(r.direction(), oc);      // 2 * B · (A - C)
-    double c = dot(oc, oc) - radius * radius;     // (A - C) · (A - C) - R^2
-    
-    double discriminant = b*b - 4*a*c;           // 판별식 D = b^2 - 4ac
-    return (discriminant > 0);                   // D > 0 이면 광선이 구체를 관통함!
+// 광선이 구체와 부딪히는지 판별하고, 부딪힌 지점의 t값을 반환하는 함수
+double hit_sphere(const vec3& center, double radius, const ray& r) {
+    vec3 oc = r.origin() - center;
+    auto a = dot(r.direction(), r.direction());
+    auto b = 2.0 * dot(r.direction(), oc);
+    auto c = dot(oc, oc) - radius*radius;
+    auto discriminant = b*b - 4*a*c;
+
+    if (discriminant < 0) {
+        return -1.0; // 안 부딪히면 -1 반환
+    } else {
+        // 근의 공식 중 더 가까운(앞에 있는) 교점의 t값 계산
+        return (-b - sqrt(discriminant)) / (2.0*a);
+    }
 }
 
 // 픽셀의 색상을 결정하는 함수
 vec3 ray_color(const ray& r) {
-    // 화면 중앙 뒤편(0, 0, -1)에 반지름이 0.5인 구체 배치
-    if (hit_sphere(vec3(0, 0, -1), 0.5, r))
-        return vec3(1.0, 0.0, 0.0); // 구체에 부딪히면 정열의 빨간색!
+    // 1. 구체 충돌 검사 (반환된 t값 확인)
+    auto t = hit_sphere(vec3(0, 0, -1), 0.5, r);
+    if (t > 0.0) {
+        // 충돌 지점 P 계산: P(t) = A + tB
+        vec3 N = unit_vector(r.at(t) - vec3(0, 0, -1));
+        
+        // 벡터의 범위 (-1 ~ 1)를 RGB 색상 범위 (0 ~ 1)로 변환하는 마법의 맵핑
+        return vec3(N.x()+1, N.y()+1, N.z()+1) * 0.5;
+    }
 
-    // 안 부딪히면 기존의 아름다운 그라데이션 하늘 배경
+    // 2. 안 부딪히면 기존의 그라데이션 하늘 배경
     vec3 unit_direction = unit_vector(r.direction());
-    double t = 0.5 * (unit_direction.y() + 1.0);
-    return vec3(1.0, 1.0, 1.0) * (1.0 - t) + vec3(0.5, 0.7, 1.0) * t;
+    auto t_bg = 0.5 * (unit_direction.y() + 1.0);
+    return vec3(1.0, 1.0, 1.0) * (1.0 - t_bg) + vec3(0.5, 0.7, 1.0) * t_bg;
 }
 
 int main() {
@@ -44,8 +56,6 @@ int main() {
     auto origin = vec3(0, 0, 0);
     auto horizontal = vec3(viewport_width, 0, 0);
     auto vertical = vec3(0, viewport_height, 0);
-    
-    // 연산자 에러를 방지하기 위해 / 2 대신 * 0.5로 완전히 교체한 라인
     auto lower_left_corner = origin - horizontal * 0.5 - vertical * 0.5 - vec3(0, 0, focal_length);
 
     // PPM 파일 출력 스트림 열기
